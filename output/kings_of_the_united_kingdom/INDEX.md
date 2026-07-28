@@ -21,14 +21,14 @@
 19. [Henry VII of England](documents/1485-08-22-HENRY_VII_OF_ENGLAND-INFOBOX.md) — reign began 1485-08-22
 20. [Henry VIII](documents/1509-04-22-HENRY_VIII-INFOBOX.md) — reign began 1509-04-22
 21. [Edward VI](documents/1547-01-28-EDWARD_VI-INFOBOX.md) — reign began 1547-01-28
-22. [Lady Jane Grey](documents/1553-07-10-LADY_JANE_GREY-INFOBOX.md) — reign began 1553-07-10
-23. [Mary I](documents/1556-01-16-MARY_I-INFOBOX.md) — reign began 1556-01-16
+22. [Mary I](documents/1553-07-01-MARY_I-INFOBOX.md) — reign began 1553-07-01
+23. [Lady Jane Grey](documents/1553-07-10-LADY_JANE_GREY-INFOBOX.md) — reign began 1553-07-10
 24. [Elizabeth I](documents/1558-11-17-ELIZABETH_I-INFOBOX.md) — reign began 1558-11-17
 25. [James VI and I](documents/1567-07-24-JAMES_VI_AND_I-INFOBOX.md) — reign began 1567-07-24
 26. [Charles I of England](documents/1625-03-27-CHARLES_I_OF_ENGLAND-INFOBOX.md) — reign began 1625-03-27
 27. [Charles II of England](documents/1660-05-29-CHARLES_II_OF_ENGLAND-INFOBOX.md) — reign began 1660-05-29
-28. [William III & II](documents/1672-07-04-WILLIAM_III_&_II-INFOBOX.md) — reign began 1672-07-04
-29. [James II & VII](documents/1685-02-06-JAMES_II_&_VII-INFOBOX.md) — reign began 1685-02-06
+28. [James II & VII](documents/1685-02-06-JAMES_II_&_VII-INFOBOX.md) — reign began 1685-02-06
+29. [William III & II](documents/1689-04-11-WILLIAM_III_&_II-INFOBOX.md) — reign began 1689-04-11
 30. [Anne, Queen of Great Britain](documents/1702-03-08-ANNE,_QUEEN_OF_GREAT_BRITAIN-INFOBOX.md) — reign began 1702-03-08
 31. [George I of Great Britain](documents/1714-08-01-GEORGE_I_OF_GREAT_BRITAIN-INFOBOX.md) — reign began 1714-08-01
 32. [George II of Great Britain](documents/1727-06-11-GEORGE_II_OF_GREAT_BRITAIN-INFOBOX.md) — reign began 1727-06-11

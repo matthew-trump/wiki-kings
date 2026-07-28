@@ -22,10 +22,12 @@ _ISO_DATE = re.compile(r"(\d{4})-(\d{2})-(\d{2})")
 # "11/22 June 1727" -- the Old Style (Julian) day is used, ignoring the New Style one.
 _DAY_MONTH_YEAR = re.compile(r"(\d{1,2})(?:/\d{1,2})?\s+([A-Za-z]+)\s+(\d{4})")
 _MONTH_DAY_YEAR = re.compile(r"([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})")
+_MONTH_YEAR = re.compile(r"([A-Za-z]+)\s+(\d{4})")
 
 
 def parse_wiki_date(text: str) -> date | None:
-    """Parse a leading '8 September 2022', 'September 8, 2022', or '2022-09-08'.
+    """Parse a leading '8 September 2022', 'September 8, 2022', '2022-09-08', or
+    (exact day unknown/disputed in the source) 'July 1553'.
 
     The ISO form shows up because infobox.py itself renders templates like
     {{start and end dates}} down to ISO dates -- this needs to round-trip back.
@@ -50,14 +52,37 @@ def parse_wiki_date(text: str) -> date | None:
             return date(int(year), month, int(day))
         except ValueError:
             continue
+
+    # Month + year only, no day (e.g. Mary I's infobox: "July 1553{{efn|sources
+    # disagree on the exact day}}"). Matters more than it looks: find_start_date()
+    # checks fields in priority order and returns on the first one that parses, so
+    # if this weren't handled here, "reign" (the correct field) would silently
+    # fail entirely and start_date would fall through to a LOWER-priority field
+    # that happens to have day precision for an unrelated title (Mary I's is
+    # "Queen consort of Spain") -- wrong info winning purely because it's more
+    # precise. 1st-of-month is an approximation, but it's an approximation of the
+    # *right* thing, which beats an exact date for the wrong one.
+    month_year_match = _MONTH_YEAR.match(text)
+    if month_year_match:
+        month = _MONTHS.get(month_year_match.group(1).lower())
+        if month is not None:
+            try:
+                return date(int(month_year_match.group(2)), month, 1)
+            except ValueError:
+                pass
     return None
 
 
 # Infobox fields commonly used to mark when someone took office, roughly in order
 # of how likely they are to appear and to represent the *start* of a reign/term.
-# 'coronation' is a fallback proxy for medieval reigns whose 'reign' field is only
-# recorded to year precision (see below) but whose coronation date is exact.
-REIGN_START_FIELDS = ("reign", "term_start", "reign1", "coronation", "coronation1")
+# 'coronation' sits ahead of 'reign1' deliberately: it's the same event/title as
+# 'reign' under a different field name (a safe, same-title proxy for reigns only
+# recorded to year precision -- see the year-only fallback below), whereas a
+# numbered 'reignN' can describe a genuinely different, unrelated title (Mary I's
+# reign1 is "Queen consort of Spain", not a more precise version of her own
+# reign). Letting reign1 outrank coronation would mean a wrong-but-precise date
+# could beat a right-but-approximate one purely on precision.
+REIGN_START_FIELDS = ("reign", "term_start", "coronation", "reign1", "coronation1")
 
 _LEADING_YEAR = re.compile(r"\d{4}")
 

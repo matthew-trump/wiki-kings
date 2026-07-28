@@ -17,6 +17,7 @@ import sys
 from pathlib import Path
 
 from . import dates, images, naming
+from .houses_writer import build_houses_document
 from .index_writer import build_index
 from .infobox import find_predecessor_target, parse_infobox, parse_infobox_raw
 from .markdown_writer import render_markdown, write_markdown
@@ -57,6 +58,11 @@ def build_parser() -> argparse.ArgumentParser:
     index.add_argument("--slug", required=True, help="Output slug title, e.g. 'kings_of_the_united_kingdom'")
     index.add_argument("--title", required=True, help="Heading for the index, e.g. 'Kings and Queens of the UK'")
     index.add_argument("--output-root", default="output", help="Defaults to ./output")
+
+    houses = subparsers.add_parser("houses", help="Build a HOUSES.md grouping one slug's sovereigns by dynasty")
+    houses.add_argument("--slug", required=True, help="Output slug title, e.g. 'kings_of_the_united_kingdom'")
+    houses.add_argument("--title", required=True, help="Heading for the document, e.g. 'Houses of the UK'")
+    houses.add_argument("--output-root", default="output", help="Defaults to ./output")
 
     return parser
 
@@ -175,12 +181,20 @@ def run_index(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_houses(args: argparse.Namespace) -> int:
+    houses_path = build_houses_document(Path(args.output_root), args.slug, args.title)
+    print(f"saved houses document: {houses_path}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = build_parser()
     args = parser.parse_args(argv)
 
     if args.command == "index":
         sys.exit(run_index(args))
+    if args.command == "houses":
+        sys.exit(run_houses(args))
 
     if args.follow_predecessors and not args.stop_at:
         parser.error("--follow-predecessors requires --stop-at")
