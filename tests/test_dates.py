@@ -74,3 +74,14 @@ def test_find_start_date_year_only_reign_still_prefers_coronation():
     # doesn't match it, and the day-precise coronation field wins as before.
     fields = {"reign": "1216 – 1272", "reign1": "1 January 1200 – 1 January 1210", "coronation": "28 October 1216"}
     assert find_start_date(fields) == date(1216, 10, 28)
+
+
+def test_parse_wiki_date_three_digit_year():
+    # Alfred the Great's reign started in 871 CE -- a plain 3-digit year in
+    # wikitext (Python's date.isoformat() zero-pads it to "0871" in our own
+    # filenames, but the source infobox text itself doesn't).
+    assert parse_wiki_date("23 April 871") == date(871, 4, 23)
+
+
+def test_find_start_date_three_digit_year_only_fallback():
+    assert find_start_date({"reign": "871 – 899"}) == date(871, 1, 1)

@@ -19,9 +19,9 @@ from .houses import assign_house_colors, normalize_house
 
 _HEADING = re.compile(r"^#\s+(.+?)\s*$")
 _FIELD_LINE = re.compile(r"^-\s+\*\*(.+?)\*\*:\s*(.*)$")
-_LEADING_YEAR = re.compile(r"^(\d{4})-\d{2}-\d{2}-")
+_LEADING_YEAR = re.compile(r"^(\d{4})-\d{2}-\d{2}-")  # filenames: date.isoformat() always zero-pads to 4 digits
 _REIGN_FIELD = re.compile(r"^Reign(\d*)$")
-_ANY_YEAR = re.compile(r"\d{4}")
+_ANY_YEAR = re.compile(r"\d{3,4}")  # free-text Reign field: 9th/10th-century years are plain 3-digit
 
 
 def _read_entry(doc_path: Path) -> tuple[str, str, str]:

@@ -24,11 +24,11 @@ _DROP_TEMPLATES = {
     "efn", "efn-ua", "refn", "sfn", "r", "rp",
     "cite", "cite web", "cite news", "cite book", "cite journal",
     "citation", "cn", "citation needed", "clarify", "better source",
-    "circa",
 }
 
-_DASH_TEMPLATES = {"sndash", "spaced ndash", "snd", "ndash", "endash"}
+_DASH_TEMPLATES = {"sndash", "spaced ndash", "snd", "ndash", "endash", "dash"}
 _UNWRAP_TEMPLATES = {"nowrap", "small", "smaller", "nobold", "resize", "midsize"}
+_CIRCA_TEMPLATES = {"circa", "c.", "circa2"}
 _LIST_TEMPLATES = {
     "br separated entries", "ubl", "unbulleted list", "plainlist",
     "hlist", "flatlist", "collapsible list",
@@ -210,6 +210,12 @@ def _render_template(template: wtp.Template) -> str:
         return "–"
     if name in _UNWRAP_TEMPLATES:
         return positional[0] if positional else ""
+    if name in _CIRCA_TEMPLATES:
+        # {{circa|886}} marks a date as approximate -- common for early medieval
+        # reigns (e.g. Alfred the Great's "23 April 871 -- {{circa|886}}"). Losing
+        # this would silently overstate how precisely the date is actually known;
+        # "c. 886" matches Wikipedia's own rendering of the template.
+        return f"c. {positional[0]}" if positional else "c."
     if name in _LIST_TEMPLATES:
         if len(positional) > 1:
             items = positional

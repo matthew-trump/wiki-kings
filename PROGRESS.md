@@ -1,10 +1,11 @@
 # PROGRESS.md
 
 A narrative account of how wiki-kings got built, in the order things happened, with
-emphasis on non-obvious bugs and the reasoning behind fixes. This repo has no git
-history to fall back on (it isn't a git repository), so this file -- not `git log` --
-is the record of *why* the code looks the way it does. For the current architecture
-and command reference, see `CLAUDE.md`; this file is the story behind it.
+emphasis on non-obvious bugs and the reasoning behind fixes. Sections 1-8 predate
+this repo having git history at all, and even now the commit log is coarse (a few
+large commits, not one per change) -- this file, not `git log`, is the record of
+*why* the code looks the way it does. For the current architecture and command
+reference, see `CLAUDE.md`; this file is the story behind it.
 
 ## 1. Core pipeline: one Wikipedia page -> Markdown doc + thumbnail
 
@@ -257,12 +258,223 @@ correctly. Old-dated files (`1556-01-16-MARY_I-*`, `1672-07-04-WILLIAM_III_&_II-
 were deleted as orphans once the corrected ones existed; `INDEX.md` and
 `UK_Monarchs.key` were both regenerated afterward to match.
 
+## 8. HOUSES.md becomes normative: links, recorded colors, and the deck reads it
+
+Three asks, all pointed the same direction: link each sovereign to their document,
+record each house's chosen color as its own line, and make HOUSES.md the source of
+truth for "which sovereigns, in which houses, with which colors" -- rather than
+`build_keynote_deck.py` independently re-scanning the documents directory and
+re-running `normalize_house()`/`assign_house_colors()` from scratch, the way it had
+been doing since section 6.
+
+**Shared color logic moved into `houses.py`.** `CATEGORICAL_PALETTE_DARK`,
+`HOUSE_COLORS`, and `assign_house_colors()` lived in `scripts/build_keynote_deck.py`
+alone before this; moved next to `normalize_house()` (which was already shared) so
+there's one definition of "what color is this house," not two that could drift.
+
+**HOUSES.md's format**: under each `## House` heading, a `Color: #hex` line, then
+each sovereign as `- [Name](documents/....md) (start–end)`. The color line's
+placement (right under the heading, before any sovereigns) was specified directly --
+"below the name of the house."
+
+**Why `build_keynote_deck.py` can't just read HOUSES.md's bullets in file order.**
+HOUSES.md groups by house, so a house that gets interrupted (Tudor around Lady Jane
+Grey) has its sovereigns listed together under one heading, not interleaved with
+Grey's -- which is exactly what makes it readable as a *houses* document, but wrong
+as a slide *timeline*. `parse_houses_document()` re-derives the true order by
+sorting every entry on the ISO date baked into its linked document's filename
+(the naming.py convention) rather than trusting HOUSES.md's line order -- the same
+insight that made `_end_year()` avoid "next monarch's start date" in section 7.
+Verified by round-tripping the real 42-sovereign file and confirming Mary I lands
+back between Lady Jane Grey and Elizabeth I, not after all of Tudor's other members.
+
+**What "normative" means in practice**: `build_keynote_deck.py` no longer imports
+`normalize_house` or `assign_house_colors` at all -- it has no independent opinion
+about which house a sovereign belongs to or what color that house is, only what
+HOUSES.md says. Hand-editing HOUSES.md (reassigning a sovereign, tweaking a hex
+value) changes the next deck build without touching any code. The tradeoff: the
+deck now hard-requires HOUSES.md to exist first (`wiki-kings houses --slug ...`),
+where it previously worked from the documents directory alone.
+
+## 9. Going before 1066: the Anglo-Saxon kings, and three more real bugs
+
+The user had already hand-drafted `HOUSES_ANGLO-SAXON.md` -- Alfred the Great
+through Harold Godwinson, grouped by house, with the double reign of AEthelred the
+Unready (deposed by Swein Forkbeard in 1013, restored 1014) already correctly laid
+out as two separate entries under "Wessex". The ask: fetch each of these from
+Wikipedia the normal way, link them into that file in the same normative format as
+the main `HOUSES.md`, pick validated colors for the new houses, and build a second
+Keynote deck (Alfred -> Harold Godwinson) reading it -- explicitly requiring that
+whatever color Godwin (Harold Godwinson's house) got had to be distinct from
+Normandy's blue, since Godwinson is immediately followed, chronologically, by
+William the Conqueror at the start of the *existing* deck.
+
+**Wikipedia title resolution needed real checking, not guessing.** Several of the
+16 listed names aren't the actual article title: "Edgar" alone is a disambiguation
+page (needed "Edgar, King of England"); "AEthelred II" doesn't resolve at all
+(needed "AEthelred the Unready"); "Cnut the Great" and "Harold I" are redirects
+(to "Cnut" and "Harold Harefoot" respectively -- both fine to fetch directly, since
+`fetch_wikitext` already passes `redirects=1`). Checked every title against the
+live API (`has_infobox` / `is_disambiguation`) before running any fetches, rather
+than discovering a wrong title after the fact.
+
+**Fetching immediately broke on the earliest 8 kings (Alfred through Edward the
+Martyr), and the reason was a real, previously-latent bug, not bad luck.** Alfred's
+`reign` field is `"23 April 871 -- {{circa|886}}"`. Two problems compounded:
+
+1. `{{circa}}` was sitting in `infobox.py`'s `_DROP_TEMPLATES` -- the set for
+   citations and footnotes that carry no display value. It's neither; it's an
+   approximate-date marker, and dropping it silently deleted Alfred's reign end
+   entirely (`clean_value` rendered the field as `"23 April 871 --"`). Moved it to
+   its own handled case, rendering `{{circa|886}}` as `"c. 886"` (matching
+   Wikipedia's own visual rendering of the template) rather than either dropping it
+   or silently treating an approximate date as exact.
+2. Even with `{{circa}}` fixed, the *year itself* broke parsing: `dates.py`'s
+   regexes required exactly 4 digits (`\d{4}`), and 871 CE is 3 digits in the
+   source wikitext (`date.isoformat()` zero-pads it to `"0871"` in our own
+   filenames, but the infobox text doesn't). Every date regex in `dates.py`
+   (day-month-year, month-day-year, month-year, and the year-only fallback), plus
+   `houses_writer.py`'s end-year extraction, needed `\d{3,4}` instead of `\d{4}`.
+   This is exactly the kind of assumption ("years are always 4 digits") that holds
+   for the entire rest of this project's data and silently breaks the moment you go
+   back before 1000 CE.
+
+A third, unrelated template bug turned up investigating a separate cosmetic glitch:
+Edmund I's reign rendered as `"27 October 939 26 May 946"` (no separator at all).
+His wikitext uses `{{dash}}`, a *different* template from `{{sndash}}`/`{{ndash}}`
+and not in `_DASH_TEMPLATES` -- fell through to the generic unknown-template
+fallback, which returns the first positional argument, and `{{dash}}` has none, so
+it silently vanished. Added `"dash"` to `_DASH_TEMPLATES`.
+
+**Fixing the parser didn't fix the data already fetched.** 8 monarchs (AEthelred
+through Harold Godwinson) had already been fetched *before* these three fixes, using
+the broken 4-digit-only year regex -- and for several of them that produced a
+*wrong but non-obviously-wrong* result rather than an outright failure, because the
+old code's fallback (search the whole field for a `\d{4}` match) would skip a
+correct 3-digit year and grab an unrelated 4-digit one instead:
+- AEthelred: `reign1 = "18 March 978 - December 1013"` (no month/day precision
+  needed here, both already present) -- but the OLD code's year-only fallback,
+  unable to match "978" (3 digits), searched the whole string and found "1013"
+  instead, dating his document to his *deposition*, not his accession 35 years
+  earlier.
+- Similarly Swein Forkbeard and Harthacnut each looked "successful" but were
+  silently 20-30 years off before the fix.
+
+Re-fetched all 8 after the fixes landed and deleted the orphaned wrong-dated files
+-- the same "fix the parser, then redo the fetch, then clean up the orphan" pattern
+from section 7's Mary I / William III & II fix, now recurring for a second, unrelated
+root cause.
+
+**Multiple realms strike again, for start dates this time.** Section 7 built
+`_primary_reign_end_source()` to pick the right numbered Reign field for *end*
+dates (a monarch's numbered ReignN field can be a different, lesser realm, not a
+later stint of the same one). The exact same ambiguity exists for *start* dates and
+`dates.py` has no equivalent mechanism -- it just takes whichever
+`REIGN_START_FIELDS` entry parses first, with no concept of "which realm is this
+deck actually about." Found by inspection, not by a crash:
+- **Swein Forkbeard**: unnumbered `Succession`/`Reign` = King of *Denmark* (from
+  c. 986); `Succession2`/`Reign2` = King of *England* (from December 1013, his
+  actual, brief English conquest). The unnumbered field silently won by priority,
+  dating a "Kings of England" document to 986.
+- **Harthacnut**: same shape -- unnumbered = King of Denmark (1035), numbered
+  Succession1/Reign1 = King of England (1040).
+- **Edmund Ironside vs. Cnut**: not a multi-realm issue but the same class of
+  "silently plausible but wrong" outcome -- Edmund's reign is written as
+  `"23 April-30 November 1016"` (year stated once, for the whole range, not
+  attached to the start day/month), which no current pattern parses, so it fell all
+  the way to the year-only fallback. Cnut's own reign field is *only* year
+  precision (`"1016-1035"`). Both landed on the same year-only date, 1 January
+  1016, which put them in the WRONG RELATIVE ORDER once alphabetically
+  tie-broken (Cnut before Edmund Ironside, backwards from history -- Edmund reigned
+  April-November 1016, then Cnut became sole king).
+
+None of these are `dates.py` bugs in the sense of a wrong regex; they're a missing
+"prefer the realm this project is actually about" mechanism that section 7 built
+for end dates but never generalized to start dates. Given only 3 monarchs out of the
+whole 58-person dataset (so far) need it, fixed each with an explicit `--start-date`
+override at fetch time rather than building that generalization now: Swein ->
+`1013-12-01` (month precision from his English Reign2 field), Harthacnut ->
+`1040-01-01` (year precision only, no more specific date statement found), Edmund
+Ironside -> `1016-04-23` (his reign's own stated start), Cnut -> `1016-11-30` (the
+day Edmund Ironside's reign explicitly ends, i.e. when Cnut became sole king). If a
+*third* line of succession surfaces the same pattern, that's the signal to build the
+general fix rather than a fourth override.
+
+**Colors: an initial choice had to be abandoned mid-derivation.** Tried Wessex=
+orange first (following the established palette order). Turned out orange has bad
+CVD separation against several colors under protanopia specifically (green ΔE 2.7,
+a hard fail) and fails the normal-vision floor against several more (yellow ΔE
+10.6, magenta ΔE 11.6, red ΔE 7.1) -- of the 8 hues, almost nothing pairs safely
+with orange on both sides. Since Wessex needs a safe neighbor on *both* sides
+(Knytlinga, and Godwin), and Godwin *also* has to clear Normandy's blue, there was
+no single choice that satisfied every constraint with orange in the mix. Restarted
+from Godwin's constraint outward instead of Wessex's: blue's known-good partners
+are {orange, red, green, yellow} (from prior validator runs); picked Godwin=red
+(clears blue at dE 29.0); then picked Wessex from red's good partners
+({blue, green, violet, aqua}), landing on green (clears red at dE 32.6, and
+critically doesn't reuse blue, which would sit one house away from Normandy's own
+blue in the same combined timeline); then Knytlinga from green's good partners,
+landing on magenta (clears green at dE 34.5 -- aqua was the other candidate but
+fails the normal-vision floor against green at dE 11.9, both being cool/green-ish).
+All three pairs -- Wessex<->Knytlinga, Wessex<->Godwin, Godwin<->Normandy -- pass.
+
+**HOUSES_ANGLO-SAXON.md was hand-assembled, not run through `build_houses_document()`.**
+That function assumes one document = one chronological entry and merges same-named
+house headings together; the user's draft deliberately keeps three separate
+"Wessex" headings (interrupted first by Swein Forkbeard's "(No House)" reign, then
+by the Knytlinga/Danish kings) to show the narrative structure, and needs one
+document (AEthelred's) linked twice under two different dates. Preserved that
+structure by hand rather than forcing it through the automated grouper, computing
+each entry's date range with the same `houses_writer.py` logic (`_read_entry`) used
+for the main file, for consistency.
+
+**The double-reign listing needed two small, genuinely new mechanisms in
+`build_keynote_deck.py`'s `parse_houses_document()`:**
+1. *Sort ambiguity*: both AEthelred entries link to the same file, so the existing
+   "sort by the linked filename's date" logic gives them the same sort key. Added an
+   optional `<!-- sort:YYYY-MM-DD -->` HTML comment on a bullet line that overrides
+   the filename-derived date for that one entry -- invisible in a rendered view of
+   the Markdown, present only for the parser.
+2. *Missing Reign field*: AEthelred's infobox has no plain `Reign` field at all
+   (only numbered `Reign1`/`Reign2`), so his slide's body text was silently missing
+   the Reign line entirely -- and even fixing that generically by falling back to
+   `Reign1` would show the *same* text ("978-1013") on *both* of his slides, wrong
+   for the second one. Fixed by extending the bullet-line regex to also capture each
+   entry's own `(date range)` text and threading it through as a fallback the slide
+   builder only uses when the document's own `Reign` field is absent -- preserves
+   full-precision text everywhere else (all 41 other UK monarchs, 15 of these 16
+   Anglo-Saxon ones) and correctly differentiates AEthelred's two listings even
+   though they pull from one shared document.
+
+**"(No House)" needed to not render as a slide label.** Swein Forkbeard's heading
+is a deliberate placeholder for "not really an established dynasty," not a color
+slot -- `build_deck_script` treats any `"(...)"` -parenthesized heading the same as
+no house at all (no colored label, matching `build_slide_script`'s existing
+`if house:` guard for an empty string).
+
+Verified end to end: `parse_houses_document()` round-trips all 17 listed entries
+(16 sovereigns, AEthelred twice) into the correct chronological order; the deck
+built cleanly (18 slides including the title slide) with WESSEX/green,
+"(No House)"/no label, and GODWIN/red all rendering as expected in exported checks;
+saved as `output/kings_of_the_united_kingdom/Anglo-Saxon_Kings.key`, kept separate
+from `UK_Monarchs.key` rather than merged into one deck. Rebuilt and re-verified
+`UK_Monarchs.key` too, since the Reign-fallback change touched shared code -- no
+regression, all 42 main entries still show their full-precision Reign text.
+
 ## Current state
 
-- Tests: 51/51 passing (`python -m pytest -q`), all pure-logic, no network calls.
+- Tests: 60/60 passing (`python -m pytest -q`), all pure-logic, no network calls.
 - `output/kings_of_the_united_kingdom/`: 42 monarchs, William the Conqueror (1066) ->
-  Charles III (2022) -- `documents/`, `images/`, `INDEX.md`, `HOUSES.md`,
-  `UK_Monarchs.key` (color-coded by House, House shown at the top of each slide).
+  Charles III (2022) -- `documents/`, `images/`, `INDEX.md`, `HOUSES.md` (the
+  normative sovereign/house/color list -- see section 8), `UK_Monarchs.key`
+  (color-coded by House, House shown at the top of each slide, built by reading
+  HOUSES.md rather than the documents directory directly).
+- The same directory also holds 16 Anglo-Saxon-era documents/images, Alfred the
+  Great (871) -> Harold Godwinson (1066) -- `documents/`, `images/`,
+  `HOUSES_ANGLO-SAXON.md` (hand-assembled, normative for this line -- see section
+  9), `Anglo-Saxon_Kings.key` (a separate deck from `UK_Monarchs.key`, not merged
+  into it). AEthelred the Unready's single document is linked twice in the houses
+  file (his two reigns) and appears as two slides in the deck.
 - `output/kings_of_scotland/`: 11 monarchs, John Balliol -> Mary, Queen of Scots --
   the England/Scotland fork byproduct (section 3), `documents/` + `images/` only.
 - `output/kings_of_united_kingdom/` and `output/presidents_of_the_united_states/`:
@@ -272,15 +484,20 @@ were deleted as orphans once the corrected ones existed; `INDEX.md` and
 
 - `kings_of_scotland` doesn't extend further back (e.g. to Kenneth MacAlpin) and has
   no `INDEX.md`, `HOUSES.md`, or Keynote deck of its own -- and its documents predate
-  the section-7 date-accuracy fixes (multi-Reign-field end dates, month-year start
-  dates), so it hasn't been checked for the same class of bug.
+  the section-7 *and* section-9 date-accuracy fixes (multi-Reign-field end/start
+  dates, month-year dates, 3-digit years, `{{circa}}`/`{{dash}}` templates), so it
+  hasn't been checked for any of these bug classes.
 - `presidents_of_the_united_states` is unstarted -- would need its own categorical
   mapping (political party, presumably) validated the same way, not reuse of
   `HOUSE_COLORS`.
-- The Keynote deck's body fields (Reign / Birth Date / Death Date) are a fixed list
-  in `build_keynote_deck.py`, not configurable per run.
+- The Keynote deck's body fields (Birth Date / Death Date, plus Reign when
+  available) are a fixed list in `build_keynote_deck.py`, not configurable per run.
 - `_REIGN_END_OVERRIDES` in `houses_writer.py` is a by-hand table verified against
-  the current 42 UK monarchs; extending this project to another line of succession
-  with its own multi-title monarchs would need the same manual check, not an
-  assumption that the structural rule (no-SuccessionN-means-continuation) is enough
-  on its own -- Anne already proves it isn't.
+  the current 58 UK+Anglo-Saxon monarchs; extending this project to another line of
+  succession with its own multi-title monarchs would need the same manual check,
+  not an assumption that the structural rule (no-SuccessionN-means-continuation) is
+  enough on its own -- Anne already proves it isn't.
+- `dates.py` has no "prefer this realm" mechanism for *start* dates the way
+  `houses_writer.py` has one for end dates (`_primary_reign_end_source`) -- three
+  Anglo-Saxon monarchs needed a manual `--start-date` override instead (section 9).
+  Fine at this scale; worth generalizing if a fourth case turns up.

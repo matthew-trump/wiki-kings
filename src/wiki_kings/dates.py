@@ -17,12 +17,15 @@ _MONTHS = {
 }
 
 _ISO_DATE = re.compile(r"(\d{4})-(\d{2})-(\d{2})")
+# Years are \d{3,4}, not just \d{4}: 9th/10th-century reigns (Alfred the Great,
+# 871) are written as plain 3-digit years in wikitext -- Python's date.isoformat()
+# zero-pads them to 4 digits in our own filenames, but the source text doesn't.
 # The optional "/22" handles Old Style/New Style dual dates used for reigns that
 # started before Great Britain's 1752 Julian-to-Gregorian switch, e.g. George II's
 # "11/22 June 1727" -- the Old Style (Julian) day is used, ignoring the New Style one.
-_DAY_MONTH_YEAR = re.compile(r"(\d{1,2})(?:/\d{1,2})?\s+([A-Za-z]+)\s+(\d{4})")
-_MONTH_DAY_YEAR = re.compile(r"([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})")
-_MONTH_YEAR = re.compile(r"([A-Za-z]+)\s+(\d{4})")
+_DAY_MONTH_YEAR = re.compile(r"(\d{1,2})(?:/\d{1,2})?\s+([A-Za-z]+)\s+(\d{3,4})")
+_MONTH_DAY_YEAR = re.compile(r"([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{3,4})")
+_MONTH_YEAR = re.compile(r"([A-Za-z]+)\s+(\d{3,4})")
 
 
 def parse_wiki_date(text: str) -> date | None:
@@ -84,7 +87,7 @@ def parse_wiki_date(text: str) -> date | None:
 # could beat a right-but-approximate one purely on precision.
 REIGN_START_FIELDS = ("reign", "term_start", "coronation", "reign1", "coronation1")
 
-_LEADING_YEAR = re.compile(r"\d{4}")
+_LEADING_YEAR = re.compile(r"\d{3,4}")
 
 
 def find_start_date(fields: dict[str, str]) -> date | None:

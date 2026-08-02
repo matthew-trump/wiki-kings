@@ -77,6 +77,20 @@ HOUSE_COLORS = {
     "Hanover": _SLOT_VIOLET,
     "Saxe-Coburg and Gotha": _SLOT_AQUA,
     "Windsor": _SLOT_YELLOW,
+    # Anglo-Saxon houses (HOUSES_ANGLO-SAXON.md, Alfred the Great -> Harold
+    # Godwinson, chronologically *before* Normandy). Godwin -> Normandy was the
+    # explicit constraint: Godwin's color had to clear both its neighbors, Wessex
+    # (Edward the Confessor -> Harold Godwinson) and Normandy's blue (Harold
+    # Godwinson -> William the Conqueror, the boundary into the existing deck).
+    # An initial Wessex=orange choice was abandoned because no remaining color
+    # cleared both orange and blue at once (yellow and red each fail against
+    # orange specifically; violet fails against blue). Settled on Wessex=green,
+    # Knytlinga=magenta (green<->magenta dE 34.5 normal-vision), Godwin=red
+    # (green<->red dE 32.6, red<->blue dE 29.0) -- all pass. Full derivation in
+    # PROGRESS.md.
+    "Wessex": _SLOT_GREEN,
+    "Knýtlinga": _SLOT_MAGENTA,
+    "Godwin": _SLOT_RED,
 }
 
 

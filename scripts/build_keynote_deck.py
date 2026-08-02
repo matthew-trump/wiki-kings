@@ -1,18 +1,22 @@
-"""Build a Keynote deck from a slug's HOUSES.md -- the normative sovereign list.
+"""Build a Keynote deck from a slug's houses.md file -- the normative sovereign list.
 
-Reads output/{slug}/HOUSES.md (built by `wiki-kings houses`; see houses_writer.py),
+Reads output/{slug}/{--houses-file} (default HOUSES.md; built by `wiki-kings
+houses`, or written by hand -- see houses_writer.py and HOUSES_ANGLO-SAXON.md),
 which is the source of truth for the sovereign list, each one's House, and each
-house's color -- NOT re-derived from the documents directory here, so hand-edits to
-HOUSES.md (reassigning a house, tweaking a color) are picked up automatically.
-HOUSES.md groups by house, so its line order isn't the true timeline; entries are
-re-sorted here by the ISO date baked into each linked document's filename. For each
-sovereign, pulls a few infobox fields and the saved thumbnail out of the linked
-document itself, and emits an AppleScript file that drives Keynote to build one
-slide per monarch. Doesn't touch the .key file format directly -- Keynote is
-controlled the same way a human would use it, via its scripting dictionary.
+house's color -- NOT re-derived from the documents directory here, so hand-edits
+(reassigning a house, tweaking a color) are picked up automatically. That file
+groups by house, so its line order isn't the true timeline; entries are re-sorted
+here by the ISO date baked into each linked document's filename (or an explicit
+`<!-- sort:YYYY-MM-DD -->` comment on a bullet line, for a sovereign listed more
+than once against the same document -- a double reign). For each sovereign, pulls a
+few infobox fields and the saved thumbnail out of the linked document itself, and
+emits an AppleScript file that drives Keynote to build one slide per monarch.
+Doesn't touch the .key file format directly -- Keynote is controlled the same way a
+human would use it, via its scripting dictionary.
 
 Usage:
-    python scripts/build_keynote_deck.py [--limit N] [--out deck.applescript]
+    python scripts/build_keynote_deck.py [--slug ...] [--houses-file HOUSES.md] \\
+        [--title ...] [--limit N] [--out deck.applescript]
     osascript deck.applescript
 """
 
@@ -24,7 +28,7 @@ import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-BODY_FIELDS = ["Reign", "Birth Date", "Death Date"]  # House is shown separately, see below
+BODY_FIELDS = ["Birth Date", "Death Date"]  # House shown separately; Reign handled in build_slide_script
 
 # 1024x768 (4:3) is the "White" theme's default canvas. Photo box is right-aligned
 # in the right-hand column; text box is the left-hand column. All text items get an
@@ -77,31 +81,43 @@ def fitted_image_frame(image_path: Path) -> dict[str, float] | None:
 
 _HOUSE_HEADING = re.compile(r"^##\s+(.+?)\s*$")
 _COLOR_LINE = re.compile(r"^Color:\s*(#[0-9a-fA-F]{6})\s*$")
-_SOVEREIGN_LINE = re.compile(r"^-\s+\[(.+?)\]\((.+?)\)")
+_SOVEREIGN_LINE = re.compile(r"^-\s+\[(.+?)\]\((.+?)\)\s*\((.+?)\)")
+_SORT_OVERRIDE = re.compile(r"<!--\s*sort:\s*(\d{4}-\d{2}-\d{2})\s*-->")
 _LEADING_DATE = re.compile(r"^(\d{4}-\d{2}-\d{2})-")
 
 
-def parse_houses_document(houses_md_path: Path) -> list[tuple[str, str, str, Path]]:
-    """Parse HOUSES.md into (name, house, color, doc_path), one per sovereign, in
-    true chronological order.
+def parse_houses_document(houses_md_path: Path) -> list[tuple[str, str, str, Path, str]]:
+    """Parse a houses.md-style file into (name, house, color, doc_path, date_range),
+    one per listed entry, in true chronological order.
 
-    HOUSES.md groups by house (see houses_writer.py), so its own line order
+    These files group by house (see houses_writer.py), so their own line order
     interleaves differently from history -- e.g. all of Tudor's sovereigns,
     including Mary I after the "Grey" heading, appear together under one Tudor
     heading. Re-derive the real timeline from the ISO date at the start of each
     linked document's filename (the naming.py convention) rather than trusting
     file order.
+
+    That filename date is ambiguous for someone listed more than once against a
+    single shared document (a double reign, e.g. AEthelred the Unready's first
+    reign and restoration both link to the same file) -- disambiguate with a
+    trailing `<!-- sort:YYYY-MM-DD --> ` HTML comment on that bullet line, which
+    overrides the filename-derived date for that one entry. date_range (the
+    trailing "(...)" text on the bullet, e.g. "1014-1016") is returned too, as a
+    per-*listing* fallback for a monarch whose document has no plain 'Reign' field
+    to show on the slide (again, AEthelred: his infobox only has numbered Reign1/
+    Reign2, and which one is relevant differs between his two listings here).
     """
     if not houses_md_path.exists():
         raise FileNotFoundError(
             f"{houses_md_path} not found -- run `wiki-kings houses --slug ... --title ...` "
-            "first; this script reads HOUSES.md as the normative sovereign/house/color list, "
-            "rather than re-deriving them from the documents directory."
+            "first (or write it by hand); this script reads it as the normative "
+            "sovereign/house/color list, rather than re-deriving them from the documents "
+            "directory."
         )
 
     current_house = ""
     current_color = ""
-    entries = []  # (sort_key, name, house, color, doc_path)
+    entries = []  # (sort_key, name, house, color, doc_path, date_range)
     for line in houses_md_path.read_text(encoding="utf-8").splitlines():
         heading_match = _HOUSE_HEADING.match(line)
         if heading_match:
@@ -114,14 +130,18 @@ def parse_houses_document(houses_md_path: Path) -> list[tuple[str, str, str, Pat
             continue
         sovereign_match = _SOVEREIGN_LINE.match(line)
         if sovereign_match:
-            name, link = sovereign_match.group(1), sovereign_match.group(2)
+            name, link, date_range = sovereign_match.group(1), sovereign_match.group(2), sovereign_match.group(3)
             doc_path = (houses_md_path.parent / link).resolve()
-            date_match = _LEADING_DATE.match(Path(link).name)
-            sort_key = date_match.group(1) if date_match else "9999-99-99"
-            entries.append((sort_key, name, current_house, current_color, doc_path))
+            override_match = _SORT_OVERRIDE.search(line)
+            if override_match:
+                sort_key = override_match.group(1)
+            else:
+                date_match = _LEADING_DATE.match(Path(link).name)
+                sort_key = date_match.group(1) if date_match else "9999-99-99"
+            entries.append((sort_key, name, current_house, current_color, doc_path, date_range))
 
     entries.sort(key=lambda e: e[0])
-    return [(name, house, color, doc_path) for _, name, house, color, doc_path in entries]
+    return [(name, house, color, doc_path, date_range) for _, name, house, color, doc_path, date_range in entries]
 
 
 _HEADING = re.compile(r"^#\s+(.+?)\s*$")
@@ -163,9 +183,17 @@ def applescript_multiline(lines: list[str]) -> str:
 
 def build_slide_script(
     heading: str, image_path: Path | None, fields: dict[str, str],
-    house: str, house_color_hex: str | None,
+    house: str, house_color_hex: str | None, reign_fallback: str = "",
 ) -> str:
-    body_lines = [f"{key}: {fields[key]}" for key in BODY_FIELDS if fields.get(key)]
+    # Prefer the document's own full-precision 'Reign' field; fall back to the
+    # houses.md file's per-listing date range only when that field doesn't exist --
+    # a monarch whose infobox only has numbered Reign1/Reign2 (e.g. AEthelred the
+    # Unready) has no plain 'Reign' at all, and which numbered one is relevant
+    # differs between his two separate listings even though both share one document.
+    reign_text = fields.get("Reign") or reign_fallback
+    body_lines = ([f"Reign: {reign_text}"] if reign_text else []) + [
+        f"{key}: {fields[key]}" for key in BODY_FIELDS if fields.get(key)
+    ]
 
     parts = [
         # Without an explicit base layout, a new slide inherits the theme's default
@@ -223,17 +251,22 @@ def build_slide_script(
     return "\n".join(parts)
 
 
-def build_deck_script(slug: str, deck_title: str, limit: int | None, theme: str) -> str:
-    houses_md_path = ROOT / "output" / slug / "HOUSES.md"
+def build_deck_script(slug: str, deck_title: str, limit: int | None, theme: str, houses_file: str) -> str:
+    houses_md_path = ROOT / "output" / slug / houses_file
     entries = parse_houses_document(houses_md_path)
     if limit:
         entries = entries[:limit]
 
     slide_scripts = []
-    for name, house, color, doc_path in entries:
+    for name, house, color, doc_path, date_range in entries:
         _, image_path, fields = parse_doc(doc_path)
+        # A "(...)" heading like "(No House)" is a placeholder for "not really a
+        # dynasty" (e.g. Swein Forkbeard's brief, unestablished reign) -- meaningful
+        # as a heading in the Markdown file, but not something to show as a colored
+        # slide label. Treat it the same as no house at all.
+        display_house = "" if house.startswith("(") and house.endswith(")") else house
         slide_scripts.append(
-            build_slide_script(name, image_path, fields, house, color or None)
+            build_slide_script(name, image_path, fields, display_house, color or None, date_range)
         )
 
     header = f"""tell application "Keynote"
@@ -255,12 +288,17 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--slug", default="kings_of_the_united_kingdom")
     parser.add_argument("--title", default="Kings and Queens of the United Kingdom")
+    parser.add_argument(
+        "--houses-file", default="HOUSES.md",
+        help="Filename within output/{slug}/ to read as the normative sovereign list "
+        "(default HOUSES.md; e.g. HOUSES_ANGLO-SAXON.md for a different line/era)",
+    )
     parser.add_argument("--limit", type=int, default=None, help="Only build the first N slides (for testing)")
     parser.add_argument("--out", default=str(ROOT / "scripts" / "deck.applescript"))
     parser.add_argument("--theme", default="Basic Black", help="Keynote theme name; new text items inherit its default text color")
     args = parser.parse_args()
 
-    script = build_deck_script(args.slug, args.title, args.limit, args.theme)
+    script = build_deck_script(args.slug, args.title, args.limit, args.theme, args.houses_file)
     out_path = Path(args.out)
     out_path.write_text(script, encoding="utf-8")
     print(f"wrote {out_path}")

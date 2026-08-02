@@ -19,6 +19,21 @@ def test_clean_value_resolves_wikilinks():
     assert clean_value("[[Elizabeth II|the Queen]]") == "the Queen"
 
 
+def test_clean_value_renders_circa_instead_of_dropping_it():
+    # {{circa|886}} previously sat in _DROP_TEMPLATES alongside citation/footnote
+    # templates and vanished entirely -- silently deleting Alfred the Great's reign
+    # end date ("23 April 871 -- {{circa|886}}" rendered as "23 April 871 --", the
+    # approximate end year just gone). "c. 886" matches Wikipedia's own rendering.
+    assert clean_value("23 April 871 – {{circa|886}}") == "23 April 871 – c. 886"
+
+
+def test_clean_value_renders_dash_template():
+    # {{dash}} (a generic "–") is a different template from {{sndash}}/{{ndash}}
+    # and wasn't in _DASH_TEMPLATES -- Edmund I's "27 October 939{{dash}} 26 May
+    # 946" rendered as "27 October 939 26 May 946", the separator just gone.
+    assert clean_value("27 October 939{{dash}} 26 May 946") == "27 October 939– 26 May 946"
+
+
 def test_clean_value_strips_bold_and_italics():
     assert clean_value("'''Charles III'''") == "Charles III"
     assert clean_value("''Regina''") == "Regina"

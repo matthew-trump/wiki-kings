@@ -23,6 +23,10 @@ def test_end_year_no_year_found():
     assert _end_year("unknown") == "?"
 
 
+def test_end_year_three_digit_year():
+    assert _end_year("23 April 871 – c. 886") == "886"
+
+
 def test_primary_reign_end_source_uses_later_stint_of_same_title():
     # Edward IV: deposed 1470 (Readeption of Henry VI), restored 1471. Reign1 has
     # no Succession1 of its own -- it's the same "King of England" title, just a
