@@ -479,6 +479,18 @@ regression, all 42 main entries still show their full-precision Reign text.
   the England/Scotland fork byproduct (section 3), `documents/` + `images/` only.
 - `output/kings_of_united_kingdom/` and `output/presidents_of_the_united_states/`:
   still-empty placeholders that predate this project's slug convention.
+- Git: everything is now committed, including the generated data (documents/
+  images/`.key` decks), not just source -- earlier Anglo-Saxon-era commits had
+  landed the code changes but left the fetched documents, `HOUSES_ANGLO-SAXON.md`,
+  and `Anglo-Saxon_Kings.key` untracked; a later commit caught those up. Working
+  tree is clean as of this writing.
+- `Anglo-Saxon_Kings.key` was reopened cold in a later session (a fresh "generate
+  the Anglo-Saxon slideshow" request) and verified still correct -- 18 slides, right
+  colors, right content -- with no rebuild needed, since nothing upstream
+  (`HOUSES_ANGLO-SAXON.md`, the documents it links) had changed. That's the
+  HOUSES.md-as-normative-source design (section 8) working as intended: the deck is
+  a pure function of that file, so it's safe to just re-verify rather than blindly
+  regenerate on every ask.
 
 ## Not done yet
 
